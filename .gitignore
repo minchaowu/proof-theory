@@ -45,3 +45,16 @@ $RECYCLE.BIN/
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# Lean project
+.gitignore~
+.ninja_deps
+.ninja_log
+*.ninja
+.project
+*.lock
+*.d
+*.ilean
+*.clean
+*.olean
+*.lean~
