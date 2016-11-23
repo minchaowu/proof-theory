@@ -161,6 +161,8 @@ namespace PropF
   theorem Soundness : Prop_Soundness :=
   λ A, Soundness_general A ∅
 
+-- By Minchao
+
   definition incon (Γ : set PropF) : Prop := ∃ α, (Γ ⊢ α) ∧ (Γ ⊢ ~ α)
 
   definition con (Γ : set PropF) : Prop := ¬ incon Γ
@@ -224,6 +226,8 @@ namespace PropF
 
   -- definition var (α : PropF) : set PropF := 
   -- PropF.rec_on _ _ _ _ _ _
+
+  -- Below is a constructive version.
 
   theorem meta_thm0 (Γ : set PropF) (α : PropF) : Γ ⊢ α ⇒ α := 
   !ImpI (!Nax !mem_insert)
@@ -301,6 +305,7 @@ namespace PropF
 
   --lemma 
 
+  -- Simple induction doesn't work
   theorem weak_completeness {α : PropF} : ∅ ⊨ α → ∅ ⊢ α := 
   PropF.rec_on α 
   (λ a H, absurd H (invalid_atom a)) 
