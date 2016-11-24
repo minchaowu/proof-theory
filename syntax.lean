@@ -8,8 +8,8 @@ Define propositional calculus, valuation, provability, validity, prove soundness
 
 This file is based on Floris van Doorn Coq files.
 -/
-import data.nat data.set data.list
-open nat bool set decidable classical list
+import data.nat data.set 
+open nat bool set decidable classical 
 
 definition PropVar [reducible] := nat
 
@@ -80,7 +80,7 @@ namespace PropF
 
   open Nc
 
-  theorem insert_sub_insert {A : Type} {s₁ s₂ : set A} (a : A) (H : s₁ ⊆ s₂) : insert a s₁ ⊆ insert a s₂ := take x, assume H1, or.elim H1 (λ Hl, or.inl Hl) (λ Hr, or.inr (H x Hr))
+  theorem insert_sub_insert {A : Type} {s₁ s₂ : set A} (a : A) (H : s₁ ⊆ s₂) : insert a s₁ ⊆ insert a s₂ := take x, assume H1, or.elim H1 (λ Hl, or.inl Hl) (λ Hr, or.inr (H Hr))
 
   lemma weakening : ∀ Γ A, Γ ⊢ A → ∀ Δ, Γ ⊆ Δ → Δ ⊢ A :=
   λ Γ A H, Nc.induction_on H
@@ -177,6 +177,10 @@ namespace PropF
   theorem reverse_omni {Γ : set PropF} (H : ∀ α, Γ ⊢ α)  : incon Γ :=
   exists.intro ⊥ (and.intro (H ⊥) (H (~⊥)))
 
+  theorem incon_of_prov_bot {Γ : set PropF} (H : Γ ⊢ ⊥) : incon Γ :=
+  have ∀ α, Γ ⊢ α, from λ α, !BotC (!weakening H _ (subset_insert _ _)),
+  show _, from reverse_omni this
+
   theorem incon_union_of_prov {Γ : set PropF} {α : PropF} (H : Γ ⊢ α) : 
     incon (insert (~α ) Γ) := 
   have Γ ⊆ insert (~α) Γ, from subset_insert (~α) Γ,
@@ -199,7 +203,7 @@ namespace PropF
    have Satisfies v Γ, from 
      λ x, assume Hx, 
      have Γ ⊆ insert (~τ) Γ, from subset_insert (~τ) Γ,
-     have x ∈ insert (~τ) Γ, from this x Hx,
+     have x ∈ insert (~τ) Γ, from this Hx,
      Hv x this,
    have TrueQ v τ = tt, from H2 v this,
    have (~τ) ∈ insert (~τ) Γ, from !mem_insert,
@@ -222,6 +226,33 @@ namespace PropF
 
   definition max_con (Γ : set PropF) := con Γ ∧ ∀ α, α ∉ Γ → incon (insert α Γ)
 
+  noncomputable definition enum (Γ : set PropF) (n : nat) : set PropF :=
+  nat.rec_on n Γ
+  (λ pred enum', 
+   if con (insert (# (succ pred)) enum') then insert (# (succ pred)) enum' 
+   else insert (~(# (succ pred))) enum')
+
+  lemma con_insert_neg_of_incon {Γ : set PropF} {α : PropF} (H1 : con Γ) (H2 : incon (insert α Γ)) : con (insert (~α) Γ) :=
+  assume Hincon,
+  have H3 : Γ ⊢ α, from prov_of_incon_union Hincon,
+  have Γ ⊢ ~α, from !ImpI (omni H2),
+  have Γ ⊢ ⊥, from !ImpE this H3,
+  have incon Γ, from incon_of_prov_bot this,
+  show _, from H1 this
+  
+  theorem con_enum {Γ : set PropF} (H : con Γ) (n : nat) : con (enum Γ n) := 
+  nat.rec_on n H 
+  (λ a ih, by_cases
+  (suppose con (insert (# (succ a)) (enum Γ a)), 
+   have enum Γ (succ a) =  insert (# (succ a)) (enum Γ a), from if_pos this,
+   show _, by+ simp)
+  (assume Hneg,
+   have incon : incon (insert (# (succ a)) (enum Γ a)), from not_not_elim Hneg,
+   have enum Γ (succ a) =  insert (~(# (succ a))) (enum Γ a), from if_neg Hneg,    have con (insert (~(# (succ a))) (enum Γ a)), from con_insert_neg_of_incon ih incon,
+   show _, by+ simp))
+
+
+
   -- **To prove Lindenbaum's lemma we need countable PropF. How?
 
   -- definition var (α : PropF) : set PropF := 
@@ -229,8 +260,20 @@ namespace PropF
 
   -- Below is a constructive version.
 
-  theorem meta_thm0 (Γ : set PropF) (α : PropF) : Γ ⊢ α ⇒ α := 
+  theorem meta_thm0 {Γ : set PropF} {α : PropF} : Γ ⊢ α ⇒ α := 
   !ImpI (!Nax !mem_insert)
+
+  theorem meta_thm1_left {Γ : set PropF} {α β : PropF} (H : Γ ⊢ ~α) : Γ ⊢ ~(α ∧ β) := 
+  have insert (α ∧ β) Γ ⊢ α ∧ β, from !Nax !mem_insert,
+  have H1 : insert (α ∧ β) Γ ⊢ α, from !AndE₁ this,
+  have insert (α ∧ β) Γ ⊢ ~α, from !weakening H _ (subset_insert _ _),
+  show _, from !ImpI (!ImpE this H1)
+
+  theorem meta_thm1_right {Γ : set PropF} {α β : PropF} (H : Γ ⊢ ~β) : Γ ⊢ ~(α ∧ β) := 
+  have insert (α ∧ β) Γ ⊢ α ∧ β, from !Nax !mem_insert,
+  have H1 : insert (α ∧ β) Γ ⊢ β, from !AndE₂ this,
+  have insert (α ∧ β) Γ ⊢ ~β, from !weakening H _ (subset_insert _ _),
+  show _, from !ImpI (!ImpE this H1)
 
   definition vars : PropF → set PropF
   | vars (# P)    := '{# P}
@@ -269,13 +312,31 @@ namespace PropF
   PropF.rec_on α 
   (λ a, !Nax !mem_shift_atom)
   (!meta_thm0)
-  (λ α β ihα ihβ, _)
-  _
-  _
-
+  (λ α β ihα ihβ, 
+    have shift_vars α v ⊆ shift_vars (α ∧ β) v, from subset_union_left _ _,
+    have Hα : shift_vars (α ∧ β) v ⊢ shift_wff α v, from !weakening ihα _ this, 
+    have shift_vars β v ⊆ shift_vars (α ∧ β) v, from subset_union_right _ _,
+    have Hβ : shift_vars (α ∧ β) v ⊢ shift_wff β v, from !weakening ihβ _ this,
+    by_cases
+    (suppose is_true (TrueQ v α), sorry)
+    (assume Hneg, 
+      have TrueQ v α = ff, from eq_ff_of_ne_tt Hneg,
+      have TrueQ v (α ∧ β) = ff && TrueQ v β, by+ rewrite -this,
+      have TrueQ v (α ∧ β) = ff, by+ simp,
+      have ff ≠ tt, from bool.no_confusion,
+      have eq : shift_wff α v = ~α, from if_neg Hneg,
+      have ¬ is_true (TrueQ v (α ∧ β)), by+ simp,
+      have shift_wff (α ∧ β) v = ~(α ∧ β), from if_neg this,
+      have shift_vars (α ∧ β) v ⊢ ~α, by+ rewrite eq at Hα;exact Hα,
+      have shift_vars (α ∧ β) v ⊢ ~(α ∧ β), from meta_thm1_left this,
+      show _, by+ simp)
+    )
+  sorry
+  sorry
 
   lemma meta_thm {Γ : set PropF} {α β : PropF} (H1 : insert α Γ ⊢ β) (H2 : insert (~α) Γ ⊢ β) : Γ ⊢ β := sorry
 
+  theorem aux_wc {σ : PropF} (H : ∅ ⊨ σ) (v : valuation) (s : set PropF) [finite s]: s ⊆ shift_vars σ v → s ⊢ σ → ∅ ⊢ σ := induction_on_finite s _ _
   
 
   lemma empty_sat (v : valuation) : Satisfies v ∅ := λ A H, absurd H (!not_mem_empty)
