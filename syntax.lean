@@ -9,7 +9,42 @@ Define propositional calculus, valuation, provability, validity, prove soundness
 This file is based on Floris van Doorn Coq files.
 -/
 import data.nat data.set 
-open nat bool set decidable classical 
+open nat bool set decidable classical
+
+theorem gnp (S : set ℕ) [finite S] : S ≠ ∅ → ∃₀ n ∈ S, ∀₀ m ∈ S, m ≤ n :=
+induction_on_finite S (λ H, absurd rfl H)
+(λ a S' finS' notin ih H, 
+by_cases
+(suppose S' = ∅, 
+ have Hl : a ∈ insert a S', from !mem_insert,
+ have eq : insert a S' = '{a}, by+ simp,
+ have ∀ y, y ∈ insert a S' → y ≤ a, from 
+   λ y h, have y ∈ '{a}, by+ simp,
+   have y = a, from eq_of_mem_singleton this, by+ simp,
+ show _, from exists.intro a (and.intro Hl this))
+(assume Hneg, obtain b hb, from ih Hneg, 
+ by_cases 
+ (suppose a < b, 
+  have Hl : b ∈ insert a S', from !subset_insert (and.left hb),
+  have ∀ y, y ∈ insert a S' → y ≤ b, from 
+    λ y hy, or.elim hy (λ Hl, have y < b, by+ simp, le_of_lt this) 
+    (λ Hr, (and.right hb) y Hr),
+  show _, from exists.intro b (and.intro Hl this))
+ (assume nlt, 
+  have le : b ≤ a, from le_of_not_gt nlt,
+  have Hl : a ∈ insert a S', from !mem_insert,
+  have ∀ y, y ∈ insert a S' → y ≤ a, from 
+    λy hy, or.elim hy (λ Hl, le_of_eq Hl) 
+    (λ Hr, have y ≤ b, from (and.right hb) y Hr, nat.le_trans this le),
+  show _, from exists.intro a (and.intro Hl this))))
+
+theorem ne_empty_of_mem {X : Type} {s : set X} {x : X} (H : x ∈ s) : s ≠ ∅ :=
+begin intro Hs, rewrite Hs at H, apply not_mem_empty _ H end
+
+theorem image_of_ne_empty {A B : Type} (f : A → B) (s : set A) (H : s ≠ ∅): f ' s ≠ ∅ :=
+obtain a ha, from exists_mem_of_ne_empty H,
+have f a ∈ f ' s, from !mem_image_of_mem ha,
+show _, from ne_empty_of_mem this
 
 definition PropVar [reducible] := nat
 
@@ -71,6 +106,8 @@ namespace PropF
   | OrE   : ∀ Γ A B C, Γ ⊢ A ∨ B → insert A Γ ⊢ C → insert B Γ ⊢ C → Γ ⊢ C
 
   infix ⊢ := Nc
+
+  axiom finite_proof : ∀ Γ α, Γ ⊢ α → ∃ s, finite s ∧ s ⊆ Γ ∧ (s ⊢ α)
 
   definition Provable A := ∅ ⊢ A
 
@@ -163,6 +200,80 @@ namespace PropF
 
 -- By Minchao
 
+  theorem meta_thm0 {Γ : set PropF} {α : PropF} : Γ ⊢ α ⇒ α := 
+  !ImpI (!Nax !mem_insert)
+
+  theorem meta_thm1_left {Γ : set PropF} {α β : PropF} (H : Γ ⊢ ~α) : Γ ⊢ ~(α ∧ β) := 
+  have insert (α ∧ β) Γ ⊢ α ∧ β, from !Nax !mem_insert,
+  have H1 : insert (α ∧ β) Γ ⊢ α, from !AndE₁ this,
+  have insert (α ∧ β) Γ ⊢ ~α, from !weakening H _ (subset_insert _ _),
+  show _, from !ImpI (!ImpE this H1)
+
+  theorem meta_thm1_right {Γ : set PropF} {α β : PropF} (H : Γ ⊢ ~β) : Γ ⊢ ~(α ∧ β) := 
+  have insert (α ∧ β) Γ ⊢ α ∧ β, from !Nax !mem_insert,
+  have H1 : insert (α ∧ β) Γ ⊢ β, from !AndE₂ this,
+  have insert (α ∧ β) Γ ⊢ ~β, from !weakening H _ (subset_insert _ _),
+  show _, from !ImpI (!ImpE this H1)
+
+  -- should be written using tactics.
+
+  lemma eq_of_shift_insert {A : Type} {S : set A} (a b : A) : insert a (insert b S) = insert b (insert a S) :=
+  have H1 : insert a (insert b S) ⊆  insert b (insert a S), from 
+    λ x h, or.elim h 
+    (λ Hl, or.inr (or.inl Hl)) 
+    (λ Hr, or.elim Hr (λ Hlb, or.inl Hlb) (λ Hrb, or.inr (or.inr Hrb))),
+  have insert b (insert a S) ⊆  insert a (insert b S), from 
+    λ x h, or.elim h 
+    (λ Hl, or.inr (or.inl Hl)) 
+    (λ Hr, or.elim Hr (λ Hlb, or.inl Hlb) (λ Hrb, or.inr (or.inr Hrb))),
+  show _, from eq_of_subset_of_subset H1 this
+
+  theorem meta_thm2 {Γ : set PropF} {α β : PropF} (H1 : Γ ⊢ ~α) (H2 : Γ ⊢ ~β) : Γ ⊢ ~(α ∨ β) := 
+  have H3 : insert (α ∨ β) Γ ⊢ α ∨ β, from !Nax !mem_insert,
+  have (insert α Γ) ⊢ ⊥, from !deduction H1,
+  have insert (α ∨ β) (insert α Γ) ⊢ ⊥, from !weakening this _ (subset_insert _ _),
+  have H4 : insert α (insert (α ∨ β) Γ) ⊢ ⊥, by+ rewrite eq_of_shift_insert at this;exact this,
+  have (insert β Γ) ⊢ ⊥, from !deduction H2,
+  have insert (α ∨ β) (insert β Γ) ⊢ ⊥, from !weakening this _ (subset_insert _ _),
+  have insert β (insert (α ∨ β) Γ) ⊢ ⊥, by+ rewrite eq_of_shift_insert at this;exact this,
+  have (insert (α ∨ β) Γ) ⊢ ⊥, from !OrE H3 H4 this,
+  show _, from !ImpI this
+
+  theorem meta_thm3 {Γ : set PropF} {α β : PropF} (H1 : Γ ⊢ α) (H2 : Γ ⊢ ~β) : Γ ⊢ ~(α ⇒ β) := 
+  have H3 : insert (α ⇒ β) Γ ⊢ α ⇒ β, from !Nax !mem_insert,
+  have H4 : insert (α ⇒ β) Γ ⊢ ~β, from !weakening H2 _ (subset_insert _ _),
+  have insert (α ⇒ β) Γ ⊢ α, from !weakening H1 _ (subset_insert _ _),
+  have insert (α ⇒ β) Γ ⊢ β, from !ImpE H3 this,
+  have insert (α ⇒ β) Γ ⊢ ⊥, from !ImpE H4 this,
+  show _, from !ImpI this
+
+  theorem meta_thm4 {Γ : set PropF} {α β : PropF} (H : Γ ⊢ ~α) : Γ ⊢ α ⇒ β := 
+  have insert α Γ ⊢ ⊥, from !deduction H,
+  have insert (~β) (insert α Γ) ⊢ ⊥, from !weakening this _ (subset_insert _ _),
+  have insert α Γ ⊢ β, from !BotC this,
+  show _, from !ImpI this
+
+  theorem meta_thm5 {Γ : set PropF} {α β : PropF} (H : Γ ⊢ β) : Γ ⊢ α ⇒ β := 
+  have insert α Γ ⊢ β, from !weakening H _ (subset_insert _ _),
+  show _, from !ImpI this
+
+  lemma empty_sat (v : valuation) : Satisfies v ∅ := λ A H, absurd H (!not_mem_empty)
+
+  lemma empty_model (α : PropF) (H : ∅ ⊨ α) : ∀ v, is_true (TrueQ v α) := 
+  λ v, H v (empty_sat v)
+
+  lemma invalid_bot : ¬ (∅ ⊨ ⊥) := 
+  assume H, 
+  let v (a : PropVar) := tt in
+  have TrueQ v ⊥ = ff, from rfl,
+  have ¬ ff = tt, from bool.no_confusion,
+  have ¬ TrueQ v ⊥ = tt, by+ simp,
+  have H1 : ∃ v, ¬ is_true (TrueQ v ⊥), from exists.intro v this,
+  have ¬ ∃ v, ¬ is_true (TrueQ v ⊥), from not_exists_not_of_forall (empty_model ⊥ H),
+  show _, from this H1
+
+  theorem unprov_bot : ¬ (∅ ⊢ ⊥) := λ H, invalid_bot (Soundness ⊥ H)
+
   definition incon (Γ : set PropF) : Prop := ∃ α, (Γ ⊢ α) ∧ (Γ ⊢ ~ α)
 
   definition con (Γ : set PropF) : Prop := ¬ incon Γ
@@ -226,11 +337,13 @@ namespace PropF
 
   definition max_con (Γ : set PropF) := con Γ ∧ ∀ α, α ∉ Γ → incon (insert α Γ)
 
-  noncomputable definition enum (Γ : set PropF) (n : nat) : set PropF :=
+  noncomputable theory
+
+  definition enum (Γ : set PropF) (n : nat) : set PropF :=
   nat.rec_on n Γ
   (λ pred enum', 
-   if con (insert (# (succ pred)) enum') then insert (# (succ pred)) enum' 
-   else insert (~(# (succ pred))) enum')
+   if con (insert (# pred) enum') then insert (# pred) enum' 
+   else insert (~(# pred)) enum')
 
   lemma con_insert_neg_of_incon {Γ : set PropF} {α : PropF} (H1 : con Γ) (H2 : incon (insert α Γ)) : con (insert (~α) Γ) :=
   assume Hincon,
@@ -243,138 +356,280 @@ namespace PropF
   theorem con_enum {Γ : set PropF} (H : con Γ) (n : nat) : con (enum Γ n) := 
   nat.rec_on n H 
   (λ a ih, by_cases
-  (suppose con (insert (# (succ a)) (enum Γ a)), 
-   have enum Γ (succ a) =  insert (# (succ a)) (enum Γ a), from if_pos this,
+  (suppose con (insert (# a) (enum Γ a)), 
+   have enum Γ (succ a) =  insert (# a) (enum Γ a), from if_pos this,
    show _, by+ simp)
   (assume Hneg,
-   have incon : incon (insert (# (succ a)) (enum Γ a)), from not_not_elim Hneg,
-   have enum Γ (succ a) =  insert (~(# (succ a))) (enum Γ a), from if_neg Hneg,    have con (insert (~(# (succ a))) (enum Γ a)), from con_insert_neg_of_incon ih incon,
+   have incon : incon (insert (# a) (enum Γ a)), from not_not_elim Hneg,
+   have enum Γ (succ a) =  insert (~(# a)) (enum Γ a), from if_neg Hneg,    
+   have con (insert (~(# a)) (enum Γ a)), from con_insert_neg_of_incon ih incon,
    show _, by+ simp))
 
-
-
-  -- **To prove Lindenbaum's lemma we need countable PropF. How?
-
-  -- definition var (α : PropF) : set PropF := 
-  -- PropF.rec_on _ _ _ _ _ _
-
-  -- Below is a constructive version.
-
-  theorem meta_thm0 {Γ : set PropF} {α : PropF} : Γ ⊢ α ⇒ α := 
-  !ImpI (!Nax !mem_insert)
-
-  theorem meta_thm1_left {Γ : set PropF} {α β : PropF} (H : Γ ⊢ ~α) : Γ ⊢ ~(α ∧ β) := 
-  have insert (α ∧ β) Γ ⊢ α ∧ β, from !Nax !mem_insert,
-  have H1 : insert (α ∧ β) Γ ⊢ α, from !AndE₁ this,
-  have insert (α ∧ β) Γ ⊢ ~α, from !weakening H _ (subset_insert _ _),
-  show _, from !ImpI (!ImpE this H1)
-
-  theorem meta_thm1_right {Γ : set PropF} {α β : PropF} (H : Γ ⊢ ~β) : Γ ⊢ ~(α ∧ β) := 
-  have insert (α ∧ β) Γ ⊢ α ∧ β, from !Nax !mem_insert,
-  have H1 : insert (α ∧ β) Γ ⊢ β, from !AndE₂ this,
-  have insert (α ∧ β) Γ ⊢ ~β, from !weakening H _ (subset_insert _ _),
-  show _, from !ImpI (!ImpE this H1)
-
-  definition vars : PropF → set PropF
-  | vars (# P)    := '{# P}
-  | vars ⊥       := ∅
-  | vars (A ∨ B) := vars A ∪ vars B
-  | vars (A ∧ B) := vars A ∪ vars B
-  | vars (A ⇒ B) := vars A ∪ vars B
-
-  definition shift_vars : PropF → valuation → set PropF
-  | shift_vars (# P) v   := if v P = tt then '{# P} else '{# P ⇒ ⊥}
-  | shift_vars ⊥ v      := ∅
-  | shift_vars (A ∨ B) v := shift_vars A v ∪ shift_vars B v
-  | shift_vars (A ∧ B) v := shift_vars A v ∪ shift_vars B v
-  | shift_vars (A ⇒ B) v := shift_vars A v ∪ shift_vars B v
-
-  definition shift_wff (α : PropF) (v : valuation) : PropF := if is_true (TrueQ v α) then α else (~α)
-
-  lemma shift_var_eq (P : PropVar) (v : valuation) : shift_vars (# P) v = insert (shift_wff (# P) v) ∅ := 
-  by_cases
-  (suppose v P = tt, 
-    have shift_vars (# P) v = '{# P}, from if_pos this,
-    have TrueQ v (# P) = v P, from rfl,
-    have is_true (TrueQ v (# P)), by+ simp,
-    have shift_wff (# P) v = # P, from if_pos this,
-    show _, by+ simp)
-  (suppose v P ≠ tt, 
-    have shift_vars (# P) v = '{# P ⇒ ⊥}, from if_neg this,
-    have TrueQ v (# P) = v P, from rfl,
-    have ¬ is_true (TrueQ v (# P)), by+ simp,
-    have shift_wff (# P) v = (# P ⇒ ⊥), from if_neg this,
-    show _, by+ simp)
-
-  lemma mem_shift_atom (P : PropVar) (v : valuation) : shift_wff (# P) v ∈ shift_vars (# P) v := by rewrite shift_var_eq; apply mem_insert
-
-  theorem sem_to_syn (α : PropF) (v : valuation) : shift_vars α v ⊢ shift_wff α v :=
-  PropF.rec_on α 
-  (λ a, !Nax !mem_shift_atom)
-  (!meta_thm0)
-  (λ α β ihα ihβ, 
-    have shift_vars α v ⊆ shift_vars (α ∧ β) v, from subset_union_left _ _,
-    have Hα : shift_vars (α ∧ β) v ⊢ shift_wff α v, from !weakening ihα _ this, 
-    have shift_vars β v ⊆ shift_vars (α ∧ β) v, from subset_union_right _ _,
-    have Hβ : shift_vars (α ∧ β) v ⊢ shift_wff β v, from !weakening ihβ _ this,
-    by_cases
-    (suppose is_true (TrueQ v α), sorry)
-    (assume Hneg, 
-      have TrueQ v α = ff, from eq_ff_of_ne_tt Hneg,
-      have TrueQ v (α ∧ β) = ff && TrueQ v β, by+ rewrite -this,
-      have TrueQ v (α ∧ β) = ff, by+ simp,
-      have ff ≠ tt, from bool.no_confusion,
-      have eq : shift_wff α v = ~α, from if_neg Hneg,
-      have ¬ is_true (TrueQ v (α ∧ β)), by+ simp,
-      have shift_wff (α ∧ β) v = ~(α ∧ β), from if_neg this,
-      have shift_vars (α ∧ β) v ⊢ ~α, by+ rewrite eq at Hα;exact Hα,
-      have shift_vars (α ∧ β) v ⊢ ~(α ∧ β), from meta_thm1_left this,
+  theorem succ_enum {Γ : set PropF} {n : ℕ} : enum Γ n ⊆ enum Γ (succ n) :=
+  nat.rec_on n 
+  (by_cases 
+   (suppose con (insert (# 0) (enum Γ 0)), 
+     have enum Γ (succ 0) = insert (# 0) (enum Γ 0), from if_pos this,
+     have enum Γ 0 ⊆ insert (# 0) (enum Γ 0), from subset_insert _ _,
+     show _, by+ simp)
+   (assume Hneg, 
+     have enum Γ (succ 0) = insert (~(# 0)) (enum Γ 0), from if_neg Hneg,
+     have enum Γ 0 ⊆ insert (~(# 0)) (enum Γ 0), from subset_insert _ _,
+     show _, by+ simp))
+  (λ a ih, by_cases
+   (suppose con (insert (# (succ a)) (enum Γ (succ a))), 
+     have enum Γ (succ (succ a)) = insert (# (succ a)) (enum Γ (succ a)), from if_pos this,
+     have enum Γ (succ a) ⊆ insert (# (succ a)) (enum Γ (succ a)), from subset_insert _ _,
+     show _, by+ simp)
+   (assume Hneg, 
+     have enum Γ (succ (succ a)) = insert (~(# (succ a))) (enum Γ (succ a)), from if_neg Hneg,
+     have enum Γ (succ a) ⊆ insert (~(# (succ a))) (enum Γ (succ a)), from subset_insert _ _,
+     show _, by+ simp))
+  
+  -- Can be strengthened
+  theorem increasing_enum {Γ : set PropF} {n m : ℕ} : n ≤ m → enum Γ n ⊆ enum Γ m :=
+  nat.rec_on m 
+  (λ H, have n = 0, from eq_zero_of_le_zero H,
+   have enum Γ 0 ⊆ enum Γ 0, from subset.refl _,
+   show _, by+ simp)
+  (λ a ih H, by_cases
+    (suppose n = succ a, 
+      have enum Γ (succ a) ⊆ enum Γ (succ a), from subset.refl _,
       show _, by+ simp)
-    )
-  sorry
-  sorry
+    (assume Hneg, 
+      have n < succ a, from lt_of_le_of_ne H Hneg,
+      have n ≤ a, from le_of_lt_succ this,
+      have H1 : enum Γ n ⊆ enum Γ a, from ih this,
+      have enum Γ a ⊆ enum Γ (succ a), from succ_enum,
+      show _, from subset.trans H1 this))
 
-  lemma meta_thm {Γ : set PropF} {α β : PropF} (H1 : insert α Γ ⊢ β) (H2 : insert (~α) Γ ⊢ β) : Γ ⊢ β := sorry
+  section
+  parameter Γ : set PropF
+  parameter Hcon : con Γ
 
-  theorem aux_wc {σ : PropF} (H : ∅ ⊨ σ) (v : valuation) (s : set PropF) [finite s]: s ⊆ shift_vars σ v → s ⊢ σ → ∅ ⊢ σ := induction_on_finite s _ _
-  
+  definition con_comp_ext : set PropF := {x : PropF | ∃ i, x ∈ enum Γ i}
 
-  lemma empty_sat (v : valuation) : Satisfies v ∅ := λ A H, absurd H (!not_mem_empty)
+  private definition index (α : PropF) : ℕ := if cond : α ∈ con_comp_ext then some cond else 0
 
-  lemma empty_model (α : PropF) (H : ∅ ⊨ α) : ∀ v, is_true (TrueQ v α) := 
-  λ v, H v (empty_sat v)
+  -- Maybe we should show further that for any finite set S ⊆ con_com_ext, ∀ s ∈ S, s ∈ enum Γ (max (index ' S)).
+  theorem mem_index (α : PropF) (H : α ∈ con_comp_ext) : α ∈ enum Γ (index α) :=
+  have index α = some H, from if_pos H,
+  have α ∈ enum Γ (some H), from some_spec H,
+  show _, by+ simp
 
-  lemma invalid_atom (P : PropVar) : ¬ (∅ ⊨ # P) := 
-  let v (a : PropVar) := if a = P then ff else tt in
-  have v P = ff, from if_pos rfl,
-  have ¬ ff = tt, from bool.no_confusion,
-  have ¬ v P = tt, by+ simp,  
-  have H1 : ∃ v, ¬ is_true (TrueQ v (# P)), from exists.intro v this,
-  assume H,
-  have ¬ ∃ v, ¬ is_true (TrueQ v (# P)), from not_exists_not_of_forall (empty_model (# P) H),
-  show _, from this H1
-  
-  lemma invalid_bot : ¬ (∅ ⊨ ⊥) := 
-  assume H, 
-  let v (a : PropVar) := tt in
-  have TrueQ v ⊥ = ff, from rfl,
-  have ¬ ff = tt, from bool.no_confusion,
-  have ¬ TrueQ v ⊥ = tt, by+ simp,
-  have H1 : ∃ v, ¬ is_true (TrueQ v ⊥), from exists.intro v this,
-  have ¬ ∃ v, ¬ is_true (TrueQ v ⊥), from not_exists_not_of_forall (empty_model ⊥ H),
-  show _, from this H1
+  theorem con_con_comp_ext : con con_comp_ext := 
+  assume H, obtain s hs, from finite_proof _ ⊥ (!omni H),
+  have fins : finite s, from and.left hs,
+  let is : set ℕ := index ' s in
+  have s ≠ ∅, from λ H, have ∅ ⊢ ⊥, by+ simp, unprov_bot this,
+  have nemp : is ≠ ∅, from !image_of_ne_empty this,
+  have finite is, from @finite_image _ _ _ _ fins, 
+  obtain n hn, from @gnp is this nemp,
+  have pb : s ⊢ ⊥, from and.right (and.right hs),
+  have ∀ a, a ∈ s → a ∈ enum Γ n, from 
+    λ a hin, have index a ∈ is, from mem_image hin rfl,
+    have index a ≤ n, from and.right hn (index a) this,
+    have sub : enum Γ (index a) ⊆ enum Γ n, from increasing_enum this,
+    have a ∈ con_comp_ext, from (and.left (and.right hs)) _ hin,
+    have a ∈ enum Γ (index a), from mem_index _ this,
+    sub this,
+  have enum Γ n ⊢ ⊥, from !weakening pb _ this,
+  have incon (enum Γ n), from incon_of_prov_bot this,
+  show _, from (con_enum Hcon n) this
 
-  --lemma 
+  lemma unprov_bot_con_comp : ¬ (con_comp_ext ⊢ ⊥) :=
+  assume H, con_con_comp_ext (incon_of_prov_bot H)
 
-  -- Simple induction doesn't work
-  theorem weak_completeness {α : PropF} : ∅ ⊨ α → ∅ ⊢ α := 
+  definition max_con_ext : set PropF := {α : PropF | con_comp_ext ⊢ α}
+
+  theorem sub_con_comp_ext : Γ ⊆ con_comp_ext := 
+  λ x h, have Γ = enum Γ 0, from rfl, 
+  have x ∈ enum Γ 0, by+ rewrite this at h;exact h,
+  show _, from exists.intro 0 this
+
+  theorem sub_max_con_ext : Γ ⊆ max_con_ext :=
+  λ x h, have x ∈ con_comp_ext, from sub_con_comp_ext h,
+  show _, from !Nax this
+
+  -- Induction is not necessary. Can be proved by cases.
+
+  theorem atomic_comp (P : PropVar) : (con_comp_ext ⊢ # P) ∨ (con_comp_ext ⊢ ~(# P)) :=
+  nat.rec_on P 
+  (or.elim (em (con (insert (# 0) Γ))) 
+   (λ Hl, have (# 0) ∈ insert (# 0) Γ, from mem_insert _ _, 
+    have enum Γ 1 = insert (# 0) Γ, from if_pos Hl,
+    have (# 0) ∈ enum Γ 1, by+ simp,
+    have (# 0) ∈ con_comp_ext, from exists.intro 1 this,
+    show _, from or.inl (!Nax this)) 
+   (λ Hr, have (~(# 0)) ∈ insert (~(# 0)) Γ, from mem_insert _ _, 
+    have enum Γ 1 = insert (~(# 0)) Γ, from if_neg Hr,
+    have (~(# 0)) ∈ enum Γ 1, by+ simp,
+    have (~(# 0)) ∈ con_comp_ext, from exists.intro 1 this,
+    show _, from or.inr (!Nax this)))
+   (λ a ih, or.elim (em (con (insert (# (succ a)) (enum Γ (succ a)))))
+    (λ Hl, have (# (succ a)) ∈ insert (# (succ a)) (enum Γ (succ a)), from mem_insert _ _, 
+     have enum Γ (succ (succ a)) = insert (# (succ a)) (enum Γ (succ a)), from if_pos Hl,
+     have (# (succ a)) ∈ enum Γ (succ (succ a)), by+ simp,
+     have (# (succ a)) ∈ con_comp_ext, from exists.intro (succ (succ a)) this,
+     show _, from or.inl (!Nax this) )
+    (λ Hr, have (~(# (succ a))) ∈ insert (~(# (succ a))) (enum Γ (succ a)), from mem_insert _ _,
+     have enum Γ (succ (succ a)) = insert (~(# (succ a))) (enum Γ (succ a)), from if_neg Hr,
+     have (~(# (succ a))) ∈ enum Γ (succ (succ a)), by+ simp,
+     have (~(# (succ a))) ∈ con_comp_ext, from exists.intro (succ (succ a)) this,
+     show _, from or.inr (!Nax this)))
+
+  theorem comp_con_comp_ext (α : PropF) : (con_comp_ext ⊢ α) ∨ (con_comp_ext ⊢ ~α) :=
   PropF.rec_on α 
-  (λ a H, absurd H (invalid_atom a)) 
-  (λ H, absurd H invalid_bot) 
-  (λ a b ih1 ih2 H, _) 
-_ 
-_
-  
+  (λ a, atomic_comp a)
+  (or.inr (!meta_thm0))
+  (λ a b iha ihb, or.elim iha
+    (λ Hl, or.elim ihb (λ Hlb, or.inl (!AndI Hl Hlb)) (λ Hrb, or.inr (meta_thm1_right Hrb)))
+    (λ Hr, or.inr (meta_thm1_left Hr)))
+  (λ a b iha ihb, or.elim iha (λ Hl, or.inl (!OrI₁ Hl)) (λ Hr, or.elim ihb (λ Hlb, or.inl (!OrI₂ Hlb)) (λ Hrb, or.inr (meta_thm2 Hr Hrb))))
+ (λ a b iha ihb, or.elim iha (λ Hl, or.elim ihb (λ Hlb, or.inl (meta_thm5 Hlb)) (λ Hrb, or.inr (meta_thm3 Hl Hrb))) (λ Hr, or.inl (meta_thm4 Hr)))
 
+  lemma mutual_exclusion (α : PropF) (H : con_comp_ext ⊢ ~α) : ¬ (con_comp_ext ⊢ α) :=
+  assume Hneg, have con_comp_ext ⊢ ⊥, from !ImpE H Hneg,
+  have incon con_comp_ext, from incon_of_prov_bot this,
+  show _, from con_con_comp_ext this
+
+  lemma mutual_exclusion' (α : PropF) (H : ¬ (con_comp_ext ⊢ α)) : con_comp_ext ⊢ (~α) :=
+  or.elim (comp_con_comp_ext α) 
+  (λ Hl, absurd Hl H) (λ Hr, Hr)
+  
+  private definition v (P : PropVar) : bool := if # P ∈ max_con_ext then tt else ff
+
+  theorem ne_ff_of_eq_tt {a : bool} (H : a = tt) : a ≠ ff :=
+  by+ rewrite H;apply bool.no_confusion
+
+  theorem ne_tt_of_eq_ff {a : bool} (H : a = ff) : a ≠ tt :=
+  by+ rewrite H;apply bool.no_confusion
+
+  theorem sat_v {α : PropF} : α ∈ max_con_ext ↔ is_true (TrueQ v α) := 
+  PropF.rec_on α
+  (λ a, 
+   have Hl : # a ∈ max_con_ext → is_true (TrueQ v (# a)), from
+     λ h, have TrueQ v (# a) = v a, from rfl,
+     have v a = tt, from if_pos h,
+     show _, by+ simp,
+   have is_true (TrueQ v (# a)) → # a ∈ max_con_ext, from 
+     λ h, by_contradiction
+     (assume Hneg, have v a = ff, from if_neg Hneg,
+      have v a ≠ tt, from ne_tt_of_eq_ff this,
+      this h),
+   show _, from iff.intro Hl this)
+  (have Hl : ⊥ ∈ max_con_ext → is_true (TrueQ v ⊥), from 
+     λ h, absurd h unprov_bot_con_comp,
+   have is_true (TrueQ v ⊥) → ⊥ ∈ max_con_ext, from
+     λ h, have TrueQ v ⊥ = ff, from rfl,
+     have TrueQ v ⊥ ≠ tt, from ne_tt_of_eq_ff this,
+     show _, from absurd h this,
+    show _, from iff.intro Hl this)
+  (λ a b iha ihb, 
+   have Hl : (a ∧ b) ∈ max_con_ext → is_true (TrueQ v (a ∧ b)), from
+     λ h, 
+     have con_comp_ext ⊢ a, from !AndE₁ h,
+     have t1 : TrueQ v a = tt, from iff.elim_left iha this,
+     have con_comp_ext ⊢ b, from !AndE₂ h,
+     have t2 : TrueQ v b = tt, from iff.elim_left ihb this,
+     have TrueQ v (a ∧ b) = TrueQ v a && TrueQ v b, from rfl,
+     show _, by+ simp,
+   have is_true (TrueQ v (a ∧ b)) → (a ∧ b) ∈ max_con_ext, from
+     λ h, have TrueQ v (a ∧ b) = TrueQ v a && TrueQ v b, from rfl,
+     have eq : tt = TrueQ v a && TrueQ v b, by+ simp,
+     have is_true (TrueQ v a), from band_elim_left (eq.symm eq),
+     have Ha : a ∈ max_con_ext, from iff.elim_right iha this,
+     have is_true (TrueQ v b), from band_elim_right (eq.symm eq),
+     have Hb : b ∈ max_con_ext, from iff.elim_right ihb this,
+     show _, from !AndI Ha Hb,
+   show _, from iff.intro Hl this)
+  (λ a b iha ihb, 
+   have Hl : (a ∨ b) ∈ max_con_ext → is_true (TrueQ v (a ∨ b)), from
+     λ h, or.elim (comp_con_comp_ext a)
+     (λ Hl, have TrueQ v a = tt, from iff.elim_left iha Hl,
+     have TrueQ v (a ∨ b) = TrueQ v a ||  TrueQ v b, from rfl, 
+     show _, by+ simp)
+     (λ Hr, or.elim (comp_con_comp_ext b) 
+       (λ Hlb, have TrueQ v b = tt, from iff.elim_left ihb Hlb, 
+       have TrueQ v (a ∨ b) = TrueQ v a ||  TrueQ v b, from rfl,
+       show _, by+ simp) 
+       (λ Hrb, have con_comp_ext ⊢ ~(a ∨ b), from meta_thm2 Hr Hrb, 
+       have incon con_comp_ext, from incon_of_prov_bot (!ImpE this h),
+       show _, from absurd this con_con_comp_ext)),
+   have is_true (TrueQ v (a ∨ b)) → (a ∨ b) ∈ max_con_ext, from
+     λ h, have TrueQ v a = tt ∨ TrueQ v b = tt, from or_of_bor_eq h,
+     or.elim this 
+     (λ Hl, have a ∈ max_con_ext, from iff.elim_right iha Hl, !OrI₁ this) 
+     (λ Hr, have b ∈ max_con_ext, from iff.elim_right ihb Hr, !OrI₂ this),
+    show _, from iff.intro Hl this)
+  (λ a b iha ihb, 
+    have Hl : (a ⇒ b) ∈ max_con_ext → is_true (TrueQ v (a ⇒ b)), from 
+      λ h, or.elim (comp_con_comp_ext a)
+      (λ Hl, have b ∈ max_con_ext, from !ImpE h Hl, 
+       have TrueQ v b = tt, from iff.elim_left ihb this,
+       have TrueQ v (a ⇒ b) = bnot (TrueQ v a) || TrueQ v b, from rfl,
+       have TrueQ v (a ⇒ b) = bnot (TrueQ v a) || tt, by+ simp,
+       show _, by+ simp)
+      (λ Hr, have Hneg : ¬ (con_comp_ext ⊢ a), from !mutual_exclusion Hr, 
+       have ¬ (con_comp_ext ⊢ a) ↔ TrueQ v a ≠ tt, from not_iff_not iha,
+       have TrueQ v a ≠ tt, from iff.elim_left this Hneg,
+       have TrueQ v a = ff, from eq_ff_of_ne_tt this,
+       have bnot (TrueQ v a) = tt, by+ simp,
+       have TrueQ v (a ⇒ b) = bnot (TrueQ v a) || TrueQ v b, from rfl,
+       have TrueQ v (a ⇒ b) = tt || TrueQ v b, by+ simp,  
+       show _, by+ simp),
+    have is_true (TrueQ v (a ⇒ b)) → (a ⇒ b) ∈ max_con_ext, from 
+      λ h, have bnot (TrueQ v a) = tt ∨ TrueQ v b = tt, from or_of_bor_eq h,
+      or.elim this
+      (λ Hl, have TrueQ v a = ff, from eq_ff_of_bnot_eq_tt Hl, 
+       have neq : TrueQ v a ≠ tt, from ne_tt_of_eq_ff this,
+       have ¬ (con_comp_ext ⊢ a) ↔ TrueQ v a ≠ tt, from not_iff_not iha,
+       have ¬ (con_comp_ext ⊢ a), from iff.elim_right this neq,
+       have con_comp_ext ⊢ ~a, from !mutual_exclusion' this,
+       show _, from meta_thm4 this)
+      (λ Hr, have con_comp_ext ⊢ b, from iff.elim_right ihb Hr,
+       show _, from meta_thm5 this),
+     show _, from iff.intro Hl this)
+
+  theorem sat_Gamma : Satisfiable Γ:=
+  have ∀ α, α ∈ Γ → is_true (TrueQ v α), from 
+    λ α h, have α ∈ max_con_ext, from sub_max_con_ext h,
+    show _, from iff.elim_left sat_v this,
+  show _, from exists.intro v this
+
+  end
+
+  theorem PL_completeness {Γ : set PropF} {τ : PropF} (H : Γ ⊨ τ) : Γ ⊢ τ :=
+  show _, from TFAE1 sat_Gamma H
+
+  theorem PL_soundness {Γ : set PropF} {τ : PropF} (H : Γ ⊢ τ) : Γ ⊨ τ :=
+  show _, from Soundness_general τ Γ H
+
+  theorem con_of_sat {Γ : set PropF} (H : Satisfiable Γ) : con Γ :=
+  obtain v hv, from H,
+  have unprov : ¬ (Γ ⊢ ⊥), from 
+    assume Hneg, 
+    have Γ ⊨ ⊥, from PL_soundness Hneg,
+    have eq : is_true (TrueQ v ⊥), from this v hv,
+    have TrueQ v ⊥ = ff, from rfl,
+    have ¬ TrueQ v ⊥ = tt, from ne_tt_of_eq_ff this,
+    show _, from this eq,
+  assume Hneg, have Γ ⊢ ⊥, from omni Hneg,
+  show _, from unprov this
+  
+  theorem PL_compactness {Γ : set PropF} (H : ∀ s, finite s → s ⊆ Γ → Satisfiable s) : Satisfiable Γ :=
+  have con_fin : ∀ s, finite s → s ⊆ Γ → con s, from 
+    λ s fin sub,
+    show _, from con_of_sat (H s fin sub),
+  have con Γ, from 
+    assume Hneg, have Γ ⊢ ⊥, from omni Hneg,
+    have ∃ s, finite s ∧ s ⊆ Γ ∧ (s ⊢ ⊥),from !finite_proof this,
+    obtain s h, from this,
+    have Hcon : con s, from con_fin s (and.left h) (and.left (and.right h)),
+    have incon s, from incon_of_prov_bot (and.right (and.right h)),
+    show _, from Hcon this,
+  show _, from sat_Gamma Γ this
 
 end PropF
+
+
