@@ -107,7 +107,7 @@ namespace PropF
 
   infix ⊢ := Nc
 
-  axiom finite_proof : ∀ Γ α, Γ ⊢ α → ∃ s, finite s ∧ s ⊆ Γ ∧ (s ⊢ α)
+  -- axiom finite_proof : ∀ Γ α, Γ ⊢ α → ∃ s, finite s ∧ s ⊆ Γ ∧ (s ⊢ α)
 
   definition Provable A := ∅ ⊢ A
 
@@ -115,9 +115,31 @@ namespace PropF
 
   definition Prop_Completeness := ∀ A, Valid A → Provable A
 
-  open Nc
+  lemma subset_insert_of_not_mem {A : Type} {S s: set A} {a : A} (H1 : s ⊆ insert a S) (H2 : a ∉ s) : s ⊆ S :=
+  λ x h, or.elim (H1 h)
+  (λ Hl, have a ∈ s, by+ simp, absurd this H2) (λ Hr, Hr)
+
+  lemma subset_insert_of_mem {A : Type} {S s: set A} {a : A} (H1 : s ⊆ insert a S) (H2 : a ∈ s) : s \ '{a} ⊆ S :=
+  λ x h, have x ∈ insert a S, from H1 (and.left h),
+  or.elim this 
+  (λ Hl, have x ∈ '{a}, by+ rewrite Hl; apply mem_singleton, absurd this (and.right h)) 
+  (λ Hr, Hr)
+
+  lemma subset_diff_of_subset {A : Type} {S s: set A} {a : A} (H1 : s ⊆ insert a S) : s \ '{a} ⊆ S :=
+  have s \ '{a} ⊆ s, from diff_subset _ _,
+  or.elim (em (a ∈ s)) 
+  (λ Hl, subset_insert_of_mem H1 Hl) 
+  (λ Hr, subset.trans this (subset_insert_of_not_mem H1 Hr) )
+
+  lemma subset_insert_diff {A : Type} {S: set A} {a : A} : S ⊆ insert a (S \ '{a}) :=
+  λ x h, or.elim (em (x = a)) (λ Hl, or.inl Hl) 
+  (λ Hr, have x ∉ '{a}, from 
+     λ Hneg, have x = a, from eq_of_mem_singleton Hneg, Hr this,
+   have x ∈ S \ '{a}, from and.intro h this, or.inr this)
 
   theorem insert_sub_insert {A : Type} {s₁ s₂ : set A} (a : A) (H : s₁ ⊆ s₂) : insert a s₁ ⊆ insert a s₂ := take x, assume H1, or.elim H1 (λ Hl, or.inl Hl) (λ Hr, or.inr (H Hr))
+
+  open Nc
 
   lemma weakening : ∀ Γ A, Γ ⊢ A → ∀ Δ, Γ ⊆ Δ → Δ ⊢ A :=
   λ Γ A H, Nc.induction_on H
@@ -199,6 +221,117 @@ namespace PropF
   λ A, Soundness_general A ∅
 
 -- By Minchao
+
+  theorem finite_proof (Γ : set PropF) (α : PropF) (H : Γ ⊢ α) : ∃ s, finite s ∧ s ⊆ Γ ∧ (s ⊢ α) :=
+  Nc.rec_on H
+  (λ Γ a Hin,
+   have Hl : finite '{a}, from finite_insert _ _,
+   have rl : '{a} ⊆ Γ, from λ x h, 
+     have x = a, from eq_of_mem_singleton h, by+ simp,
+   have rr : '{a} ⊢ a, from !Nax !mem_singleton,
+   have finite '{a} ∧ '{a} ⊆ Γ ∧ ('{a} ⊢ a), from and.intro Hl (and.intro rl rr),
+   exists.intro '{a} this)
+  (λ Γ' a b H ih, 
+   obtain s hs, from ih, 
+   have prov : s ⊢ b, from and.right (and.right hs),
+   or.elim (em (a ∈ s))
+   (λ Hl, 
+    have rl : s \ '{a} ⊆ Γ', from subset_insert_of_mem (and.left (and.right hs)) Hl,
+    have Hl : finite (s \ '{a}), from @finite_diff _ _ _ (and.left hs),
+    have s ⊆ insert a (s \ '{a}), from subset_insert_diff,
+    have insert a (s \ '{a}) ⊢ b, from !weakening prov _ this,
+    have s \ '{a} ⊢ a ⇒ b, from !ImpI this,
+    exists.intro (s \ '{a}) (and.intro Hl (and.intro rl this)))
+   (λ Hr, have rl : s ⊆ Γ', from subset_insert_of_not_mem (and.left (and.right hs)) Hr,
+    have insert a s ⊢ b, from !weakening prov _ (subset_insert _ _),
+    have rr : s ⊢ a ⇒ b, from !ImpI this,
+    exists.intro s (and.intro (and.left hs) (and.intro rl rr))))
+  (λ Γ' a b H ih h1 h2, 
+   obtain s₁ h₁, from h1,
+   obtain s₂ h₂, from h2,
+   have fin : finite (s₁ ∪ s₂), from @finite_union _ _ _ (and.left h₁) (and.left h₂),
+   have H1 : (s₁ ∪ s₂) ⊢ a ⇒ b, from !weakening (and.right (and.right h₁)) _ (subset_union_left _ _),
+   have (s₁ ∪ s₂) ⊢ a, from !weakening (and.right (and.right h₂)) _ (subset_union_right _ _),
+   have rr : (s₁ ∪ s₂) ⊢ b, from !ImpE H1 this,
+   have sub : (s₁ ∪ s₂) ⊆ Γ', from union_subset (and.left (and.right h₁)) (and.left (and.right h₂)),
+   exists.intro (s₁ ∪ s₂) (and.intro fin (and.intro sub rr)))
+  (λ Γ' a H ih, 
+   obtain s hs, from ih,
+   have prov : s ⊢ ⊥, from and.right (and.right hs),
+   or.elim (em ((~a) ∈ s))
+   (λ Hl, 
+    have rl : s \ '{~a} ⊆ Γ', from subset_insert_of_mem (and.left (and.right hs)) Hl,
+    have Hl : finite (s \ '{~a}), from @finite_diff _ _ _ (and.left hs),
+    have s ⊆ insert (~a) (s \ '{~a}), from subset_insert_diff,
+    have insert (~a) (s \ '{~a}) ⊢ ⊥, from !weakening prov _ this,
+    have s \ '{~a} ⊢ a, from !BotC this,
+    exists.intro (s \ '{~a}) (and.intro Hl (and.intro rl this)))
+   (λ Hr, have rl : s ⊆ Γ', from subset_insert_of_not_mem (and.left (and.right hs)) Hr,
+    have insert (~a) s ⊢ ⊥, from !weakening prov _ (subset_insert _ _),
+    have rr : s ⊢ a, from !BotC this,
+    exists.intro s (and.intro (and.left hs) (and.intro rl rr))))
+  (λ Γ' a b H1 H2 ih1 ih2, 
+   obtain s₁ h₁, from ih1,
+   obtain s₂ h₂, from ih2,
+   have fin : finite (s₁ ∪ s₂), from @finite_union _ _ _ (and.left h₁) (and.left h₂),
+   have Ha : (s₁ ∪ s₂) ⊢ a, from !weakening (and.right (and.right h₁)) _ (subset_union_left _ _),
+   have Hb : (s₁ ∪ s₂) ⊢ b, from !weakening (and.right (and.right h₂)) _ (subset_union_right _ _),
+   have rr : (s₁ ∪ s₂) ⊢ a ∧ b, from !AndI Ha Hb,
+   have sub : (s₁ ∪ s₂) ⊆ Γ', from union_subset (and.left (and.right h₁)) (and.left (and.right h₂)),
+   exists.intro (s₁ ∪ s₂) (and.intro fin (and.intro sub rr)))
+  (λ Γ' a b H ih, 
+   obtain s hs, from ih,
+   have sub : s ⊆ Γ', from and.left (and.right hs),
+   have s ⊢ a, from !AndE₁ (and.right (and.right hs)),
+   exists.intro s (and.intro (and.left hs) (and.intro sub this)))
+  (λ Γ' a b H ih, 
+   obtain s hs, from ih,
+   have sub : s ⊆ Γ', from and.left (and.right hs),
+   have s ⊢ b, from !AndE₂ (and.right (and.right hs)),
+   exists.intro s (and.intro (and.left hs) (and.intro sub this)))
+  (λ Γ' a b H ih, 
+   obtain s hs, from ih,
+   have sub : s ⊆ Γ', from and.left (and.right hs),
+   have s ⊢ a ∨ b, from !OrI₁ (and.right (and.right hs)),
+   exists.intro s (and.intro (and.left hs) (and.intro sub this)))
+  (λ Γ' a b H ih, 
+   obtain s hs, from ih,
+   have sub : s ⊆ Γ', from and.left (and.right hs),
+   have s ⊢ a ∨ b, from !OrI₂ (and.right (and.right hs)),
+   exists.intro s (and.intro (and.left hs) (and.intro sub this)))
+  (λ Γ' a b c h0 h1 h2 ih1 ih2 ih3, 
+   obtain s₁ hs₁, from ih1,
+   obtain s₂ hs₂, from ih2,
+   obtain s₃ hs₃, from ih3,
+   have prov₁ : s₁ ⊢ a ∨ b, from and.right (and.right hs₁),
+   have prov₂ : s₂ ⊢ c, from and.right (and.right hs₂),
+   have prov₃ : s₃ ⊢ c, from and.right (and.right hs₃),
+   have sub₁ : s₁ ⊆ Γ', from and.left (and.right hs₁),
+   have fin₁ : finite s₁, from and.left hs₁,
+   have ua : s₂ \ '{a} ⊆ Γ', from subset_diff_of_subset (and.left (and.right hs₂)),
+   have fina : finite (s₂ \ '{a}), from @finite_diff _ _ _ (and.left hs₂),
+   have ub : s₃ \ '{b} ⊆ Γ', from subset_diff_of_subset (and.left (and.right hs₃)),
+   have finb : finite (s₃ \ '{b}), from @finite_diff _ _ _ (and.left hs₃),
+   have subu : (s₂ \ '{a}) ∪ (s₃ \ '{b}) ⊆ Γ', from union_subset ua ub,
+   have sub : s₁ ∪ ((s₂ \ '{a}) ∪ (s₃ \ '{b})) ⊆ Γ', from union_subset sub₁ subu,
+   have finu : finite ((s₂ \ '{a}) ∪ (s₃ \ '{b})), from @finite_union _ _ _ fina finb,
+   have s₁ ∪ ((s₂ \ '{a}) ∪ (s₃ \ '{b})) ⊆ Γ', from union_subset sub₁ subu,
+   have fin : finite (s₁ ∪ ((s₂ \ '{a}) ∪ (s₃ \ '{b}))), from @finite_union _ _ _ fin₁ finu,
+   have sub₂ : s₂ ⊆ insert a (s₁ ∪ ((s₂ \ '{a}) ∪ (s₃ \ '{b}))), from 
+     λ x h, or.elim (em (x = a)) (λ Hl, or.inl Hl) 
+     (λ Hr, have x ∉ '{a}, from λ Hneg, Hr (eq_of_mem_singleton Hneg),
+      have x ∈ (s₂ \ '{a}), from and.intro h this, 
+      or.inr (or.inr (or.inl this))),
+   have sub₃ : s₃ ⊆ insert b (s₁ ∪ ((s₂ \ '{a}) ∪ (s₃ \ '{b}))), from 
+     λ x h, or.elim (em (x = b)) (λ Hl, or.inl Hl) 
+     (λ Hr, have x ∉ '{b}, from λ Hneg, Hr (eq_of_mem_singleton Hneg),
+      have x ∈ (s₃ \ '{b}), from and.intro h this, 
+      or.inr (or.inr (or.inr this))),
+   have H1 : insert a (s₁ ∪ ((s₂ \ '{a}) ∪ (s₃ \ '{b}))) ⊢ c, from !weakening prov₂ _ sub₂,
+   have H2 : insert b (s₁ ∪ ((s₂ \ '{a}) ∪ (s₃ \ '{b}))) ⊢ c, from !weakening prov₃ _ sub₃,
+   have s₁ ∪ ((s₂ \ '{a}) ∪ (s₃ \ '{b})) ⊢ a ∨ b, from !weakening prov₁ _ (subset_union_left _ _),
+   have rr : s₁ ∪ ((s₂ \ '{a}) ∪ (s₃ \ '{b})) ⊢ c, from !OrE this H1 H2,
+   exists.intro (s₁ ∪ ((s₂ \ '{a}) ∪ (s₃ \ '{b}))) (and.intro fin (and.intro sub rr)))
 
   theorem meta_thm0 {Γ : set PropF} {α : PropF} : Γ ⊢ α ⇒ α := 
   !ImpI (!Nax !mem_insert)
