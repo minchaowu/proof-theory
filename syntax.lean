@@ -234,18 +234,12 @@ namespace PropF
   (λ Γ' a b H ih, 
    obtain s hs, from ih, 
    have prov : s ⊢ b, from and.right (and.right hs),
-   or.elim (em (a ∈ s))
-   (λ Hl, 
-    have rl : s \ '{a} ⊆ Γ', from subset_insert_of_mem (and.left (and.right hs)) Hl,
-    have Hl : finite (s \ '{a}), from @finite_diff _ _ _ (and.left hs),
-    have s ⊆ insert a (s \ '{a}), from subset_insert_diff,
-    have insert a (s \ '{a}) ⊢ b, from !weakening prov _ this,
-    have s \ '{a} ⊢ a ⇒ b, from !ImpI this,
-    exists.intro (s \ '{a}) (and.intro Hl (and.intro rl this)))
-   (λ Hr, have rl : s ⊆ Γ', from subset_insert_of_not_mem (and.left (and.right hs)) Hr,
-    have insert a s ⊢ b, from !weakening prov _ (subset_insert _ _),
-    have rr : s ⊢ a ⇒ b, from !ImpI this,
-    exists.intro s (and.intro (and.left hs) (and.intro rl rr))))
+   have rl : s \ '{a} ⊆ Γ', from subset_diff_of_subset (and.left (and.right hs)),
+   have Hl : finite (s \ '{a}), from @finite_diff _ _ _ (and.left hs),
+   have s ⊆ insert a (s \ '{a}), from subset_insert_diff,
+   have insert a (s \ '{a}) ⊢ b, from !weakening prov _ this,
+   have s \ '{a} ⊢ a ⇒ b, from !ImpI this,
+   exists.intro (s \ '{a}) (and.intro Hl (and.intro rl this)))
   (λ Γ' a b H ih h1 h2, 
    obtain s₁ h₁, from h1,
    obtain s₂ h₂, from h2,
@@ -258,18 +252,12 @@ namespace PropF
   (λ Γ' a H ih, 
    obtain s hs, from ih,
    have prov : s ⊢ ⊥, from and.right (and.right hs),
-   or.elim (em ((~a) ∈ s))
-   (λ Hl, 
-    have rl : s \ '{~a} ⊆ Γ', from subset_insert_of_mem (and.left (and.right hs)) Hl,
-    have Hl : finite (s \ '{~a}), from @finite_diff _ _ _ (and.left hs),
-    have s ⊆ insert (~a) (s \ '{~a}), from subset_insert_diff,
-    have insert (~a) (s \ '{~a}) ⊢ ⊥, from !weakening prov _ this,
-    have s \ '{~a} ⊢ a, from !BotC this,
-    exists.intro (s \ '{~a}) (and.intro Hl (and.intro rl this)))
-   (λ Hr, have rl : s ⊆ Γ', from subset_insert_of_not_mem (and.left (and.right hs)) Hr,
-    have insert (~a) s ⊢ ⊥, from !weakening prov _ (subset_insert _ _),
-    have rr : s ⊢ a, from !BotC this,
-    exists.intro s (and.intro (and.left hs) (and.intro rl rr))))
+   have rl : s \ '{~a} ⊆ Γ', from subset_diff_of_subset (and.left (and.right hs)),
+   have Hl : finite (s \ '{~a}), from @finite_diff _ _ _ (and.left hs),
+   have s ⊆ insert (~a) (s \ '{~a}), from subset_insert_diff,
+   have insert (~a) (s \ '{~a}) ⊢ ⊥, from !weakening prov _ this,
+   have s \ '{~a} ⊢ a, from !BotC this,
+   exists.intro (s \ '{~a}) (and.intro Hl (and.intro rl this)))
   (λ Γ' a b H1 H2 ih1 ih2, 
    obtain s₁ h₁, from ih1,
    obtain s₂ h₂, from ih2,
