@@ -4,7 +4,9 @@ Released under Apache 2.0 license as described in the file LICENSE.
 
 Author: Leonardo de Moura
 
-Define propositional calculus, valuation, provability, validity, prove soundness.
+Modified by Minchao Wu.
+
+Define propositional calculus, valuation, provability, validity, prove soundness, completeness, compactness.
 
 This file is based on Floris van Doorn Coq files.
 -/
@@ -106,8 +108,6 @@ namespace PropF
   | OrE   : ∀ Γ A B C, Γ ⊢ A ∨ B → insert A Γ ⊢ C → insert B Γ ⊢ C → Γ ⊢ C
 
   infix ⊢ := Nc
-
-  -- axiom finite_proof : ∀ Γ α, Γ ⊢ α → ∃ s, finite s ∧ s ⊆ Γ ∧ (s ⊢ α)
 
   definition Provable A := ∅ ⊢ A
 
@@ -456,7 +456,7 @@ namespace PropF
    have incon Γ, from reverse_omni this,
    H2 this)
 
-  definition max_con (Γ : set PropF) := con Γ ∧ ∀ α, α ∉ Γ → incon (insert α Γ)
+  -- definition max_con (Γ : set PropF) := con Γ ∧ ∀ α, α ∉ Γ → incon (insert α Γ)
 
   noncomputable theory
 
